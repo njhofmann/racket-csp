@@ -1,8 +1,10 @@
 #lang racket
 (require racket/set)
+(require racket/local)
 
 ; Returns if the given list of booleans is all true.
 ; bools : Listof Boolean
+; Return : Boolean  
 (define (all bools)
   (cond
     [(empty? bools) #t]
@@ -27,91 +29,104 @@
 ; constraints : Listof Constraints
 (struct problem (variables constraints))
 
-
-; Checks that the domain of the given variable only consists of integers.
-; variable : Variable
-(define (verify-variable variable)
-  (all (map integer? (variable-domain variable))))
-
-; abstract out
-(define (verify-variables-helper variables)
-  (cond
-    [(empty? variables) #t]
-    [(verify-variable (first variables))
-     (verify-variables-helper (rest variables))]
-    [else (raise-argument-error 'mismatching-variables-arity
-                                ""
-                                (first variables))]))
-
-(define (verify-variables problem)
-  (verify-variables-helper (problem-variables problem)))
-
-
-; Checks that the number of variables assigned to the given constraint match
-; the number of expected arguments by the associated function.
-(define (verify-constraint constraint)
-  (equal? (length (constraint-variables constraint))
-                  (procedure-arity (constraint-function constraint))))
-
-
-(define (verify-constraints-helper constraints)
-  (cond
-    [(empty? constraints) #t]
-    [(verify-constraint (first constraints))
-     (verify-constraints-helper (rest constraints))]
-    [else (raise-argument-error 'mismatching-constraint-arity
-                                ""
-                                (first constraints))]))
-
-(define (verify-constraints problem)
-  (verify-constraints-helper (problem-constraints problem)))
-
-; Returns if the two given lists have no overlapping elements.
-; a : Listof Nothing
-; b : Listof Nothing
-(define (no-overlap a b)
-  (equal? (set a) (set b)))
-
-(define (filter-by-set filter-list set-by)
-  (filter (lambda (x) (set-member? set-by x)) filter-list))
-
-(define (set-disjoin a b)
-  (let ([set-a (set->list a)]
-        [set-b (set->list b)])
-    (append (filter-by-set set-a b) (filter-by-set set-b a))))
-
-(define (verify-overlap problem)
-  (let ([variable-set (append (map variable-domain
-                               (problem-variables problem)))]
-        [constraint-set (append (map constraint-variables
-                               (problem-constraints problem)))])
-    (if (no-overlap variable-set constraint-set)
-      #t
-      (raise-argument-error 'missing-vars ""
-                            (set-disjoin variable-set constraint-set)))))
-
-; Verifies that the given problem is valid, i.e. that the variables match all
-; the variables in given constraints, and that the number of variables assigned
-; to each constraint matches the number of variables that function takes in, and
-; that each variable only has integers in its domain.
-; Returns the problem is no issue is detected, else raises a specific issue.
+; Checks that the domains of the variables of the given problem consist only of
+; integers.
 ; problem : Problem
-(define (verify-problem problem)
-  (if (and (verify-variables problem)
-           (verify-constraints problem)
-           (verify-overlap problem))
-      problem
-      (raise-argument-error 'invalid-problem "" problem)))  ; should never occur
+; Return : Boolean
+(define (variable-domains-integers? problem)
+  (local (; Checks that the domain of the given variable only consists of
+          ; integers.
+          ; variable : Variable
+          ; Return : Boolean
+          (define (variable-domain-integers? variable)
+            (all (map integer? (variable-domain variable))))
 
-; Creates a varialble with the given name whose domain is the range from start
+          (define (verify-variables-helper variables)
+            (cond
+              [(empty? variables) #t]
+              [(variable-domain-integers? (first variables))
+               (verify-variables-helper (rest variables))]
+              [else (raise-argument-error 'mismatching-variables-arity
+                                          ""
+                                          (first variables))])))
+    (verify-variables-helper (problem-variables problem))))
+
+
+; Checks that for each constraint of the given problem, number of variables
+; assigned to that constraint match the number of arguments expected by its
+; associated function.
+; problem : Problem
+; Return : Boolean
+(define (matching-constraints-arity? problem)
+  (local (; Checks that the number of variables assigned to the given constraint
+          ; match the number of expected arguments of its associated function.
+          ; constraint : Constraint
+          ; Return : Boolean
+          (define (verify-constraint constraint)
+            (equal? (length (constraint-variables constraint))
+                    (procedure-arity (constraint-function constraint))))
+
+          (define (verify-constraints-helper constraints)
+            (cond
+              [(empty? constraints) #t]
+              [(verify-constraint (first constraints))
+               (verify-constraints-helper (rest constraints))]
+              [else (raise-argument-error 'mismatching-constraint-arity
+                                          ""
+                                          (first constraints))])))
+    (verify-constraints-helper (problem-constraints problem))))
+
+; Checks that for the given problem, the variables assigned in the constraints
+; of this problem do not mention a variable not assigned to the problem.
+; Possible for a variable to not be mentioned in a constraint, but no vice
+; versa.
+; problem : Problem
+; Return : Boolean
+(define (variable-overlap? problem)
+  (let* ([assigned-variables
+          (list->set (map variable-name (problem-variables problem)))]
+         [constraint-variables
+          (apply append
+                 (map constraint-variables (problem-constraints problem)))]
+         [unassigned-constraint-vars
+          (filter (lambda (x) (not (set-member? assigned-variables x)))
+                  constraint-variables)])
+    (if (empty? unassigned-constraint-vars)
+        #t
+        (raise-argument-error
+         'unassigned-variables
+         "constraints have variable(s) not assigned to problem"
+         unassigned-constraint-vars))))
+
+; Verifies that the given problem is valid, i.e. that is meets the following
+; criteria:
+; - variables assigned to given constraints do not contain a variable not
+;   assigned to the problem
+; - variable names assigned to problem are unique
+; - variables assigned to each constraint are unique
+; - that the number of variables assigned to each constraint matches the number
+;   of arguments that function accepts
+; - each variable only has integers in its domain.
+; problem : Problem
+; Return : Boolean
+(define (valid-problem? problem)
+  (and (variable-domains-integers? problem)
+       (matching-constraints-arity? problem)
+       (variable-overlap? problem)
+       (unique-variables? problem)
+       (unique-constraint-variables? problem))
+
+; Creates a variable with the given name whose domain is the range from start
 ; to end.
 ; name : Symbol
 ; start : Integer
 ; end : Integer
+; Return : Variable
 (define (variable-from-range name start end)
-  (variable name (range start end)))
+  (variable name (range start (add1 end))))
 
-(define foo (problem (list (variable 'a '(1 2 3)))
-                     (list (constraint '(a) (lambda (x) #t)))))
+(define foo (problem (list (variable 'a '(1 2 3)) (variable 'b '(1 2 3)))
+                     (list (constraint '(a b c) (lambda (x z y) #t))
+                           (constraint '(a b) (lambda (x y) #t)))))
 
-(verify-problem foo)
+(valid-problem? foo)
