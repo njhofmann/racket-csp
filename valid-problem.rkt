@@ -1,5 +1,5 @@
 #lang racket
-(provide valid-problem?)
+(provide valid-problem? all)
 (require racket/set)
 (require racket/local)
 (require "types.rkt")
