@@ -13,28 +13,43 @@
     [(equal? (first bools) #f) #f]
     [else (all (rest bools))]))
 
-; Checks that the domains of the variables of the given problem consist only of
-; integers.
+(define (all-func? func items)
+  (all (map func items)))
+
+; Returns if given list of items consists of all symbols.
+; items : List of items
+; Returns : Boolean
+(define (all-symbols? items)
+  (all-func? symbol? items))
+
+(define (all-procedures? items)
+  (all-func? procedure? items))
+
+; Returns if the variable attribute of the given problem is valid, i.e. does it
+; consist of a mapping of symbols to list of integers.
 ; problem : Problem
 ; Return : Boolean
-(define (variable-domains-integers? problem)
+(define (valid-variables-attribute? problem)
   (local (; Checks that the domain of the given variable only consists of
           ; integers.
-          ; variable : Variable
+          ; domain : List of Integer
           ; Return : Boolean
-          (define (variable-domain-integers? variable)
-            (all (map integer? (variable-domain variable))))
+          (define (variable-domain-integers? domain)
+            (all (map integer? domain)))
 
-          (define (verify-variables-helper variables)
-            (cond
-              [(empty? variables) #t]
-              [(variable-domain-integers? (first variables))
-               (verify-variables-helper (rest variables))]
-              [else (raise-argument-error 'mismatching-variables-arity
-                                          ""
-                                          (first variables))])))
-    (verify-variables-helper (problem-variables problem))))
+          (define (valid-domains? domains)
+            (all (map variable-domain-integers? domains))))
+    (and (all-symbols? (hash-keys (problem-variables problem)))
+         (valid-domains? (hash-values (problem-variables problem))))))
 
+; Returns if the constraint attribute of the given problem is valid, i.e. is it
+; a mapping of List of symbols to functions.
+; problem : Problem
+; Return : boolean
+(define (valid-constraints-attribute? problem)
+  (and (all (map all-symbols? (hash-keys (problem-constraints problem))))
+       (all (map all-procedures? (hash-values (problem-constraints problem))))
+       ))
 
 ; Checks that for each constraint of the given problem, number of variables
 ; assigned to that constraint match the number of arguments expected by its
@@ -42,23 +57,31 @@
 ; problem : Problem
 ; Return : Boolean
 (define (matching-constraints-arity? problem)
-  (local (; Checks that the number of variables assigned to the given constraint
-          ; match the number of expected arguments of its associated function.
+  (local (; Checks that the expected number of variables matches the expected
+          ; number of arguments of the given function.
           ; constraint : Constraint
           ; Return : Boolean
-          (define (verify-constraint constraint)
-            (equal? (length (constraint-variables constraint))
-                    (procedure-arity (constraint-function constraint))))
+          (define (verify-constraint num-of-vars constraint)
+            (equal? num-of-vars
+                    (procedure-arity constraint)))
 
+          ; constraints : List of Pairs
+          ; Return : Boolean
           (define (verify-constraints-helper constraints)
-            (cond
-              [(empty? constraints) #t]
-              [(verify-constraint (first constraints))
-               (verify-constraints-helper (rest constraints))]
-              [else (raise-argument-error 'mismatching-constraint-arity
-                                          ""
-                                          (first constraints))])))
-    (verify-constraints-helper (problem-constraints problem))))
+            (if (empty? constraints)
+                #t
+                (let* ([cur-constraint (first constraints)]
+                   [num-of-vars (length (first cur-constraint))]
+                   [constraints (rest cur-constraint)])
+              (cond
+                [(all (map (lambda (x) (verify-constraint num-of-vars x))
+                           constraints))
+                 (verify-constraints-helper (rest constraints))]
+                [else (raise-argument-error 'mismatching-constraint-arity
+                                            ""
+                                            cur-constraint)])))))
+          (verify-constraints-helper
+           (hash->list (problem-constraints problem)))))
 
 ; Checks that for the given problem, the variables assigned in the constraints
 ; of this problem do not mention a variable not assigned to the problem.
@@ -68,10 +91,10 @@
 ; Return : Boolean
 (define (variable-overlap? problem)
   (let* ([assigned-variables
-          (list->set (map variable-name (problem-variables problem)))]
+          (list->set (hash-keys (problem-variables problem)))]
          [constraint-variables
           (apply append
-                 (map constraint-variables (problem-constraints problem)))]
+                 (hash-keys (problem-constraints problem)))]
          [unassigned-constraint-vars
           (filter (lambda (x) (not (set-member? assigned-variables x)))
                   constraint-variables)])
@@ -88,43 +111,30 @@
 (define (unique-list? items)
   (equal? (length items) (length (set->list (list->set items)))))
 
-; Returns if the variables in the given problem are unique.
-; problem : Problem
-; Return : boolean
-(define (unique-variables? problem)
-  (unique-list? (problem-variables problem)))
-
 ; For the given problem, for each associated constraint, returns if variables
 ; are unique.
 ; problem : Problem
 ; Return : boolean
 (define (unique-constraint-variables? problem)
-  (all (map unique-list?
-            (map constraint-variables (problem-constraints problem)))))
+  (all (map unique-list? (hash-keys (problem-constraints problem)))))
 
 ; Verifies that the given problem is valid, i.e. that is meets the following
 ; criteria:
+; - variables attibute is mapping of symbols to domains
+; - constraints attribute is mapping of a list of integers to a procedure
 ; - variables assigned to given constraints do not contain a variable not
-;   assigned to the problem
-; - variable names assigned to problem are unique
+;   assigned to the problem, under variable attribute
+; - variable names assigned to problem are unique (implicit)
 ; - variables assigned to each constraint are unique
 ; - that the number of variables assigned to each constraint matches the number
 ;   of arguments that function accepts
-; - each variable only has integers in its domain.
+; - each variable only has integers in its domain (under variables attribute)
 ; problem : Problem
 ; Return : Boolean
 (define (valid-problem? problem)
-  (and (variable-domains-integers? problem)
+  (and (valid-variables-attribute? problem)
+       (valid-constraints-attribute? problem)
        (matching-constraints-arity? problem)
        (variable-overlap? problem)
-       (unique-variables? problem)
-       (unique-constraint-variables? problem)))
-
-; Creates a variable with the given name whose domain is the range from start
-; to end.
-; name : Symbol
-; start : Integer
-; end : Integer
-; Return : Variable
-(define (variable-from-range name start end)
-  (variable name (range start (add1 end))))
+       (unique-constraint-variables? problem)
+       ))

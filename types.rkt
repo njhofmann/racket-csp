@@ -1,21 +1,22 @@
 #lang racket
 
-(provide (struct-out variable) (struct-out constraint) (struct-out problem))
+(provide (struct-out problem) make-problem)
 
-; Defines a variable for CSP problem, consisting of a unique identifier and a
-; list of all valid values that domain may take.
-; name : Symbol - unique ID
-; domain : Listof Integer 
-(struct variable (name domain))
-
-; Defines a constraint for a CSP, consisting of a list of variables to be
-; applied to the associated constraint.
-; variables : Listof Symbol 
-; constraint: function taking in some number of associated Integers, returning
-;             a boolean
-(struct constraint (variables function))
-
-; Defines a CSP from a given set of variables and constraints.
-; variables : Listof Variable
-; constraints : Listof Constraints
+; Defines a CSP from a group of variables, a mapping of variable names to
+; domains (symbols to list of integers) and constraints, a mapping of
+; variables to constraint functions (list of symbols to a function).
+; variables : Hashtable of Symbol to List of Integers
+; constraints : Hashtable of List of Symbols to Function
 (struct problem (variables constraints))
+
+(define (make-problem variables constraints)
+  (problem (make-hash variables) (make-hash constraints)))
+
+; Creates a variable with the given name whose domain is the range from start
+; to end. Variable is a returned as a pair of the symbol and created range.
+; name : Symbol
+; start : Integer
+; end : Integer
+; Return : Pair
+(define (variable-from-range name start end)
+  (name . (range start (add1 end))))
