@@ -1,5 +1,4 @@
-1.) Fix problem representation & positive tests
-2.) Docs, abstraction, etc. for valid problems, and errors for helper functions
+1.) Tests for helper functions
 3.) Negative tests for valid problem testings, catching exceptions
 4.) Simple backtracking algorithm
 5.) Dual graph & hidden transformation

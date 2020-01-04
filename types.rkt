@@ -1,6 +1,6 @@
 #lang racket
 
-(provide (struct-out problem) make-problem)
+(provide (struct-out problem) problem make-problem)
 
 ; Defines a CSP from a group of variables, a mapping of variable names to
 ; domains (symbols to list of integers) and constraints, a mapping of
@@ -10,7 +10,7 @@
 (struct problem (variables constraints))
 
 (define (make-problem variables constraints)
-  (problem (make-hash variables) (make-hash constraints)))
+  (problem (make-immutable-hash variables) (make-immutable-hash constraints)))
 
 ; Creates a variable with the given name whose domain is the range from start
 ; to end. Variable is a returned as a pair of the symbol and created range.
